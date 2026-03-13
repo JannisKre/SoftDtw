@@ -52,7 +52,7 @@ def _parse_args():
         metavar="M",
         help="List of m values to sweep (k is set equal to m for each).",
     )
-    p.add_argument("--gamma",    type=float, default=1.0,  help="Soft-DTW smoothing parameter.")
+    p.add_argument("--gamma",    type=float, default=0.1,  help="Soft-DTW smoothing parameter.")
     p.add_argument("--epochs",   type=int,   default=500,  help="Gradient steps per optimisation call.")
     p.add_argument("--retries",  type=int,   default=5,    help="Retries per subset / new-point attempt.")
     p.add_argument("--max_d",    type=int,   default=20,   help="Upper bound on shattering dimension.")

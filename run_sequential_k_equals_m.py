@@ -58,6 +58,12 @@ def _parse_args():
     p.add_argument("--max_d",    type=int,   default=20,   help="Upper bound on shattering dimension.")
     p.add_argument("--num_runs", type=int,   default=1,    help="Independent greedy runs per (k,m) pair.")
     p.add_argument(
+        "--max_projected_shattering_seconds",
+        type=float,
+        default=86400.0,
+        help="Abort a candidate d when one subset runtime projects the full 2^d subset pass beyond this many seconds.",
+    )
+    p.add_argument(
         "--out_dir", type=str, default=".",
         help="Directory for witness CSVs and summary.csv.",
     )
@@ -85,6 +91,7 @@ def main():
     print(f"  retries    : {args.retries}")
     print(f"  max_d      : {args.max_d}")
     print(f"  num_runs   : {args.num_runs}")
+    print(f"  time guard : {args.max_projected_shattering_seconds}s")
     print(f"  output dir : {os.path.abspath(args.out_dir)}")
     print("=" * 65)
 
@@ -100,11 +107,14 @@ def main():
             k=k,
             gamma=args.gamma,
             max_retries_step4=args.retries,
+            epochs=args.epochs,
+            retries=args.retries,
             max_d=args.max_d,
             witness_csv_path=out_csv,
             num_runs=args.num_runs,
             verbose=args.verbose,
             validation=True,          # always use hard-DTW validation
+            max_projected_shattering_seconds=args.max_projected_shattering_seconds,
         )
 
         elapsed = time.time() - t0
@@ -136,6 +146,7 @@ def main():
             "retries":  args.retries,
             "max_d":    args.max_d,
             "num_runs": args.num_runs,
+            "max_projected_shattering_seconds": args.max_projected_shattering_seconds,
         })
 
     # ── Write summary CSV ─────────────────────────────────────────────────────
@@ -143,6 +154,7 @@ def main():
         "m", "k", "d_max", "d_mean", "d_min", "all_d",
         "hit_max_d", "elapsed_s",
         "gamma", "epochs", "retries", "max_d", "num_runs",
+        "max_projected_shattering_seconds",
     ]
     with open(summary_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)

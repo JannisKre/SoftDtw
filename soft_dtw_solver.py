@@ -24,6 +24,7 @@ import io
 import itertools
 import math
 import os
+import time
 
 import numpy as np
 import torch
@@ -391,8 +392,12 @@ def optimize_ball_robust(
 # Shattering check
 # =============================================================================
 
+class ProjectedRuntimeExceeded(RuntimeError):
+    """Raised when a shattering check is projected to exceed a time budget."""
+
 def check_shattering(Qs, k: int, gamma: float = 1.0, epochs: int = 500, retries: int = 5,
-                     verbose: bool = False, validation: bool = True, init_witnesses=None):
+                     verbose: bool = False, validation: bool = True, init_witnesses=None,
+                     max_projected_total_seconds: float | None = None):
     """
     Test whether the set *Qs* is shattered by Soft-DTW balls of center
     complexity *k*.
@@ -405,6 +410,9 @@ def check_shattering(Qs, k: int, gamma: float = 1.0, epochs: int = 500, retries:
         Typical use: pass the ``witnesses_csv`` dict from
         :func:`load_point_set_from_csv` to seed the solver from hard-DTW
         witnesses.
+    max_projected_total_seconds : optional float
+        Abort the shattering check when one subset runtime already projects
+        the full ``2^|Qs|`` subset pass above this time budget.
 
     Returns
     -------
@@ -414,6 +422,7 @@ def check_shattering(Qs, k: int, gamma: float = 1.0, epochs: int = 500, retries:
     indices  = list(range(len(Qs)))
     witnesses = {}
     init_w = init_witnesses or {}
+    total_subsets = 2 ** len(Qs)
 
     for r in range(len(Qs) + 1):
         for subset_I in itertools.combinations(indices, r):
@@ -422,6 +431,8 @@ def check_shattering(Qs, k: int, gamma: float = 1.0, epochs: int = 500, retries:
             # Use stored witness P as warm start if available
             hint = init_w.get(tuple(I_list))
             init_P = hint["P"] if hint is not None else None
+
+            subset_start = time.perf_counter()
 
             success, P_opt, Delta_opt, max_in_dtw, min_out_dtw, hard_valid = optimize_ball_robust(
                 Qs,
@@ -434,6 +445,18 @@ def check_shattering(Qs, k: int, gamma: float = 1.0, epochs: int = 500, retries:
                 verbose=verbose,
                 init_P=init_P,
             )
+
+            subset_elapsed = time.perf_counter() - subset_start
+            if (
+                max_projected_total_seconds is not None
+                and subset_elapsed * total_subsets > max_projected_total_seconds
+            ):
+                raise ProjectedRuntimeExceeded(
+                    "Projected full shattering check would take about "
+                    f"{subset_elapsed * total_subsets / 3600.0:.2f}h "
+                    f"({total_subsets} subsets × {subset_elapsed:.2f}s), "
+                    f"which exceeds the limit of {max_projected_total_seconds / 3600.0:.2f}h."
+                )
 
             if not success:
                 if verbose:
@@ -514,12 +537,15 @@ def _single_sequential_run(
     k: int,
     gamma: float,
     max_retries_step4: int,
+    epochs: int,
+    retries: int,
     max_d: int,
     witness_csv_path: str,
     run_idx: int,
     num_runs: int,
     verbose: bool,
     validation: bool = True,
+    max_projected_shattering_seconds: float | None = None,
 ):
     """Execute one greedy sequential run and return (d_max, X, witnesses)."""
     d                = 0
@@ -533,9 +559,21 @@ def _single_sequential_run(
         for _ in range(max_retries_step4 + 1):
             new_Q      = torch.randn(m, 1)
             current_X  = X + [new_Q]
-            is_shattered, current_witnesses = check_shattering(
-                current_X, k, gamma, verbose=verbose, validation=validation
-            )  # epochs/retries use check_shattering defaults here
+            try:
+                is_shattered, current_witnesses = check_shattering(
+                    current_X,
+                    k,
+                    gamma,
+                    epochs=epochs,
+                    retries=retries,
+                    verbose=verbose,
+                    validation=validation,
+                    max_projected_total_seconds=max_projected_shattering_seconds,
+                )
+            except ProjectedRuntimeExceeded as exc:
+                print(f"Run {run_idx}/{num_runs} | stopping at d={d + 1}: {exc}")
+                success = False
+                break
 
             if is_shattered:
                 X               = current_X
@@ -557,11 +595,14 @@ def sequential_capacity_estimation(
     k: int,
     gamma: float = 1.0,
     max_retries_step4: int = 5,
+    epochs: int = 500,
+    retries: int = 5,
     max_d: int = 15,
     witness_csv_path: str = "witnesses_sequential_capacity.csv",
     num_runs: int = 1,
     verbose: bool = False,
     validation: bool = True,
+    max_projected_shattering_seconds: float | None = None,
 ):
     """
     Estimate the shattering capacity for query series in R^m and center in R^k.
@@ -572,11 +613,16 @@ def sequential_capacity_estimation(
     k                 : length of the ball center P.
     gamma             : Soft-DTW smoothing parameter.
     max_retries_step4 : maximum attempts to add a new point before giving up.
+    epochs            : gradient steps per subset-separation optimisation.
+    retries           : random restarts per subset-separation optimisation.
     max_d             : upper bound on d to search for.
     witness_csv_path  : output CSV path (suffix '_run<N>' added for multi-run).
     num_runs          : number of independent greedy runs.
     verbose           : detailed per-subset output when True.
     validation        : whether to require hard-DTW validation of witnesses.
+    max_projected_shattering_seconds : optional float
+        Abort a candidate shattering test when one subset runtime already
+        projects the full ``2^d`` subset pass above this time budget.
 
     Returns
     -------
@@ -593,12 +639,15 @@ def sequential_capacity_estimation(
         d, X, witnesses = _single_sequential_run(
             m=m, k=k, gamma=gamma,
             max_retries_step4=max_retries_step4,
+            epochs=epochs,
+            retries=retries,
             max_d=max_d,
             witness_csv_path=witness_csv_path,
             run_idx=run_idx,
             num_runs=num_runs,
             verbose=verbose,
             validation=validation,
+            max_projected_shattering_seconds=max_projected_shattering_seconds,
         )
         all_results.append((d, X, witnesses))
         all_d_values.append(d)

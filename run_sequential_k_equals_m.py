@@ -58,6 +58,19 @@ def _parse_args():
     p.add_argument("--max_d",    type=int,   default=20,   help="Upper bound on shattering dimension.")
     p.add_argument("--num_runs", type=int,   default=1,    help="Independent greedy runs per (k,m) pair.")
     p.add_argument(
+        "--sampling_mode",
+        type=str,
+        choices=["gaussian", "near_unit_sphere"],
+        default="near_unit_sphere",
+        help="How new query series are sampled during the greedy search.",
+    )
+    p.add_argument(
+        "--sampling_radius_noise",
+        type=float,
+        default=0.05,
+        help="Radial noise used when --sampling_mode near_unit_sphere.",
+    )
+    p.add_argument(
         "--max_projected_shattering_seconds",
         type=float,
         default=86400.0,
@@ -91,6 +104,7 @@ def main():
     print(f"  retries    : {args.retries}")
     print(f"  max_d      : {args.max_d}")
     print(f"  num_runs   : {args.num_runs}")
+    print(f"  sampling   : {args.sampling_mode} (noise={args.sampling_radius_noise})")
     print(f"  time guard : {args.max_projected_shattering_seconds}s")
     print(f"  output dir : {os.path.abspath(args.out_dir)}")
     print("=" * 65)
@@ -115,6 +129,8 @@ def main():
             verbose=args.verbose,
             validation=True,          # always use hard-DTW validation
             max_projected_shattering_seconds=args.max_projected_shattering_seconds,
+            sampling_mode=args.sampling_mode,
+            sampling_radius_noise=args.sampling_radius_noise,
         )
 
         elapsed = time.time() - t0
@@ -146,6 +162,8 @@ def main():
             "retries":  args.retries,
             "max_d":    args.max_d,
             "num_runs": args.num_runs,
+            "sampling_mode": args.sampling_mode,
+            "sampling_radius_noise": args.sampling_radius_noise,
             "max_projected_shattering_seconds": args.max_projected_shattering_seconds,
         })
 
@@ -154,6 +172,7 @@ def main():
         "m", "k", "d_max", "d_mean", "d_min", "all_d",
         "hit_max_d", "elapsed_s",
         "gamma", "epochs", "retries", "max_d", "num_runs",
+        "sampling_mode", "sampling_radius_noise",
         "max_projected_shattering_seconds",
     ]
     with open(summary_path, "w", newline="") as f:

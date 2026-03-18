@@ -532,6 +532,31 @@ def _with_run_suffix(path: str, run_idx: int, num_runs: int) -> str:
     return f"{root}_run{run_idx}{ext or '.csv'}"
 
 
+def _sample_query_series(
+    m: int,
+    sampling_mode: str = "gaussian",
+    sampling_radius_noise: float = 0.05,
+) -> torch.Tensor:
+    """
+    Sample a new query series for the sequential construction.
+
+    ``near_unit_sphere`` means “near the unit circle” when ``m = 2``.
+    """
+    if sampling_mode == "gaussian":
+        return torch.randn(m, 1)
+
+    if sampling_mode == "near_unit_sphere":
+        q = torch.randn(m)
+        q = q / q.norm().clamp_min(1e-12)
+        radius = 1.0 + sampling_radius_noise * torch.randn(())
+        return (radius * q).reshape(m, 1)
+
+    raise ValueError(
+        f"Unknown sampling_mode={sampling_mode!r}. "
+        "Use 'gaussian' or 'near_unit_sphere'."
+    )
+
+
 def _single_sequential_run(
     m: int,
     k: int,
@@ -546,6 +571,8 @@ def _single_sequential_run(
     verbose: bool,
     validation: bool = True,
     max_projected_shattering_seconds: float | None = None,
+    sampling_mode: str = "gaussian",
+    sampling_radius_noise: float = 0.05,
 ):
     """Execute one greedy sequential run and return (d_max, X, witnesses)."""
     d                = 0
@@ -557,7 +584,11 @@ def _single_sequential_run(
         success = False
 
         for _ in range(max_retries_step4 + 1):
-            new_Q      = torch.randn(m, 1)
+            new_Q      = _sample_query_series(
+                m,
+                sampling_mode=sampling_mode,
+                sampling_radius_noise=sampling_radius_noise,
+            )
             current_X  = X + [new_Q]
             try:
                 is_shattered, current_witnesses = check_shattering(
@@ -603,6 +634,8 @@ def sequential_capacity_estimation(
     verbose: bool = False,
     validation: bool = True,
     max_projected_shattering_seconds: float | None = None,
+    sampling_mode: str = "gaussian",
+    sampling_radius_noise: float = 0.05,
 ):
     """
     Estimate the shattering capacity for query series in R^m and center in R^k.
@@ -623,6 +656,8 @@ def sequential_capacity_estimation(
     max_projected_shattering_seconds : optional float
         Abort a candidate shattering test when one subset runtime already
         projects the full ``2^d`` subset pass above this time budget.
+    sampling_mode     : how new query series are sampled in the greedy search.
+    sampling_radius_noise : radial noise level used by ``sampling_mode``.
 
     Returns
     -------
@@ -648,6 +683,8 @@ def sequential_capacity_estimation(
             verbose=verbose,
             validation=validation,
             max_projected_shattering_seconds=max_projected_shattering_seconds,
+            sampling_mode=sampling_mode,
+            sampling_radius_noise=sampling_radius_noise,
         )
         all_results.append((d, X, witnesses))
         all_d_values.append(d)
@@ -841,6 +878,19 @@ def _parse_args():
     parser.add_argument("--max_d",    type=int,   default=15,   help="Maximum d to search")
     parser.add_argument("--retries",  type=int,   default=3,    help="Retries per new point / subset")
     parser.add_argument("--out",      type=str,   default="witnesses.csv", help="Output CSV path")
+    parser.add_argument(
+        "--sampling_mode",
+        type=str,
+        choices=["gaussian", "near_unit_sphere"],
+        default="gaussian",
+        help="How sequentially added query series are sampled.",
+    )
+    parser.add_argument(
+        "--sampling_radius_noise",
+        type=float,
+        default=0.05,
+        help="Radial noise used when --sampling_mode near_unit_sphere.",
+    )
 
     # ── Shared options ────────────────────────────────────────────────────────
     parser.add_argument("--gamma",         type=float, default=0.1,  help="Soft-DTW smoothing parameter")
@@ -876,6 +926,8 @@ def main():
         num_runs=args.num_runs,
         verbose=args.verbose,
         validation=not args.no_validation,
+        sampling_mode=args.sampling_mode,
+        sampling_radius_noise=args.sampling_radius_noise,
     )
 
     if len(result) == 3:

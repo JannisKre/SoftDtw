@@ -1,0 +1,8 @@
+s,m,k,2^s,pi_hat,mean_count,std_count,min_count,frac_max,fully_shattered_any,all_counts,gamma,epochs,retries,validation,sampling_mode,sampling_radius_noise,num_samples,timestamp
+1,4,4,2,2,2.0,0.0,2,1.0,1,2;2,0.1,500,5,1,near_unit_sphere,0.05,2,2026-04-02T21:14:42
+2,4,4,4,4,4.0,0.0,4,1.0,1,4;4,0.1,500,5,1,near_unit_sphere,0.05,2,2026-04-02T21:14:42
+3,4,4,8,8,8.0,0.0,8,1.0,1,8;8,0.1,500,5,1,near_unit_sphere,0.05,2,2026-04-02T21:14:42
+4,4,4,16,16,16.0,0.0,16,1.0,1,16;16,0.1,500,5,1,near_unit_sphere,0.05,2,2026-04-02T21:14:42
+5,4,4,32,32,32.0,0.0,32,1.0,1,32;32,0.1,500,5,1,near_unit_sphere,0.05,2,2026-04-02T21:14:42
+6,4,4,64,64,63.5,0.5,63,1.0,1,63;64,0.1,500,5,1,near_unit_sphere,0.05,2,2026-04-02T21:14:42
+7,4,4,128,118,112.0,6.0,106,0.921875,0,118;106,0.1,500,5,1,near_unit_sphere,0.05,2,2026-04-02T21:14:42

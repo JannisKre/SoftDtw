@@ -25,8 +25,14 @@ __MACOSX/
 # ── VS Code ───────────────────────────────────────────────────────────────────
 .vscode/
 
+# ── Generated result directories (re-run locally) ────────────────────────────
+results/
+results2/
+results_growth_m7/
+benchmark_results/
+
 # ── Generated witness CSVs (large output files) ───────────────────────────────
-# Archived results are kept; run-specific outputs are ignored.
-witnesses_k*_m*.csv
+# Root-level curated witnesses are kept; run-specific outputs are ignored.
+witnesses_k*_m*_run*.csv
 witnesses_sequential_capacity*.csv
 witnesses_*_run*.csv

@@ -1,0 +1,9 @@
+row_type,point_index,subset_I,Q_values,P_values,Delta,hard_dtw_max_in,hard_dtw_min_out,hard_dtw_valid
+SHATTERED_SET,,,,,,,,
+POINT,0,,0.5741567016,,,,,
+POINT,1,,-0.7386159897,,,,,
+WITNESSES,,,,,,,,
+SUBSET_WITNESS,,{},,0.4385997951,-0.7373563647,,,1
+SUBSET_WITNESS,,{0},,0.5741567016,1,0,1.72337234,1
+SUBSET_WITNESS,,{1},,-0.7386159897,1,0,1.72337234,1
+SUBSET_WITNESS,,"{0,1}",,-0.08222964406,1,,,1

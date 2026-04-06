@@ -127,6 +127,90 @@ Long-format: one row per (run, subset) pair, plus a header row (empty `subset`) 
 
 ---
 
+## Sequential Estimation Pipeline
+
+The shattering capacity is estimated by a **greedy sequential algorithm** built from
+several composable functions in `soft_dtw_solver.py`. Here is what each does and how
+they chain together:
+
+### 1. `SoftDTW` — differentiable DTW
+
+```python
+sdtw = SoftDTW(gamma=0.1)
+distance = sdtw(Q, P)   # scalar tensor, differentiable w.r.t. P and Q
+```
+
+PyTorch `nn.Module` that computes the soft-DTW distance using the smoothed minimum
+$\min^\gamma(a_i) = -\gamma \log \sum_i e^{-a_i/\gamma}$ in place of the hard
+$\min$. As $\gamma \to 0$ this converges to standard DTW; for $\gamma > 0$ the result
+is smooth and differentiable everywhere.
+
+### 2. `optimize_ball` — single gradient-descent run
+
+```python
+P_opt, Delta_opt, losses = optimize_ball(Qs, I, k, gamma, epochs=500)
+```
+
+Jointly optimises a center $P \in \mathbb{R}^k$ and radius $\Delta$ by minimising
+the **hinge separation loss**
+$$L_I(P,\Delta) = \sum_{i\in I} \max\{0, \mathrm{dtw}^\gamma(Q_i,P) - \Delta + \eta\}
+                + \sum_{j\notin I} \max\{0, \Delta - \mathrm{dtw}^\gamma(Q_j,P) + \eta\}$$
+using Adam. Initialisation: the mean of the inside curves resampled to length $k$
+(via `_smart_init_P`), giving Adam a numerically sensible starting point.
+
+### 3. `optimize_ball_robust` — robust solver with retries and hard-DTW validation
+
+```python
+success, P, Delta, max_in, min_out, hard_valid = optimize_ball_robust(
+    Qs, I, k, gamma, retries=5, require_hard_dtw_validation=True
+)
+```
+
+Calls `optimize_ball` up to `retries` times with independent random initialisations.
+Accepts the first result that achieves genuine **soft-DTW separation**
+($\max_{i\in I} \mathrm{dtw}^\gamma(Q_i,P) < \min_{j\notin I} \mathrm{dtw}^\gamma(Q_j,P)$).
+If `require_hard_dtw_validation=True`, the witness is further verified with exact (hard)
+DTW before being accepted — this guards against artifacts of the $\gamma$-smoothing.
+
+### 4. `check_shattering` — full shattering test for one point set
+
+```python
+is_shattered, witnesses = check_shattering(Qs, k, gamma, epochs=500, retries=5)
+```
+
+Calls `optimize_ball_robust` for **all $2^s$ subsets** $I \subseteq \{0,\ldots,s-1\}$.
+Returns `True` only if every subset is separable, together with a dict mapping each
+subset to its witness center $P$. A `ProjectedRuntimeExceeded` exception is raised
+early if the per-subset timing projects the total cost above `max_projected_total_seconds`.
+
+### 5. `_single_sequential_run` — one greedy run
+
+```python
+d_max, X_final, witnesses = _single_sequential_run(m, k, gamma, max_retries_step4, ...)
+```
+
+Implements the greedy sequential algorithm:
+1. Start with $d = 0$, $X = \emptyset$.
+2. Sample a new query series $Q \in \mathbb{R}^m$ (via `_sample_query_series`).
+3. Call `check_shattering(X \cup \{Q\}, k, \ldots)`.
+4. If shattered: set $X \leftarrow X \cup \{Q\}$, $d \leftarrow d+1$, go to step 2.
+5. If not: retry (fresh $Q$) up to `max_retries_step4` times. If all fail: stop.
+
+### 6. `sequential_capacity_estimation` — multi-run orchestrator
+
+```python
+best_d, best_X, best_witnesses, all_d_values = sequential_capacity_estimation(
+    m, k, num_runs=3, gamma=0.1, epochs=500, ...
+)
+```
+
+Calls `_single_sequential_run` `num_runs` times independently (different random seeds),
+then returns the run with the largest `d_max`. This is the top-level function used by
+`run_sequential_k_equals_m.py` and `sequential_k_equals_m.ipynb` to produce the thesis
+data.
+
+---
+
 ## Requirements
 
 ### GPU (recommended for large $k$, $m$)
